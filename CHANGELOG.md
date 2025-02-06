@@ -1,5 +1,11 @@
 # rankify-contracts
 
+## 0.11.3
+
+### Patch Changes
+
+- [#129](https://github.com/peeramid-labs/contracts/pull/129) [`adb3d3f7ba536015d637a73118c24a69ceff3bd6`](https://github.com/peeramid-labs/contracts/commit/adb3d3f7ba536015d637a73118c24a69ceff3bd6) Thanks [@peersky](https://github.com/peersky)! - playbook improvement to accomodate with demo requirements
+
 ## 0.11.2
 
 ### Patch Changes
