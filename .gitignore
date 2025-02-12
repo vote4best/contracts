@@ -278,3 +278,8 @@ bin/
 abi/
 docs/contracts/
 docs/selectors.md
+
+# circom
+zk_artifacts/
+src/verifiers/
+.zkproofs-cache/
