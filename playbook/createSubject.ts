@@ -2,6 +2,7 @@ import { task } from 'hardhat/config';
 import { DAODistributor, MAODistribution, Rankify } from '../types';
 import { generateDistributorData } from '../scripts/libraries/generateDistributorData';
 import { parseInstantiated } from '../scripts/parseInstantiated';
+import { ethers } from 'ethers';
 
 task('createSubject', 'Creates a new subject with MAO distribution')
   .addOptionalParam('metadata', 'Metadata for the rankify contract', 'metadata')
@@ -23,7 +24,8 @@ task('createSubject', 'Creates a new subject with MAO distribution')
     'Distributors ID to create game from, defaults to hardhat task defaultDistributionId',
   )
   .setAction(async (taskArgs, hre) => {
-    const { getNamedAccounts } = hre;
+    const { getNamedAccounts, deployments } = hre;
+    await deployments.fixture(['MAO']);
     const distributorDeployment = await hre.deployments.get('DAODistributor');
 
     const distributorArguments: MAODistribution.DistributorArgumentsStruct = {
@@ -34,7 +36,7 @@ task('createSubject', 'Creates a new subject with MAO distribution')
       rankifySettings: {
         rankTokenContractURI: taskArgs.rankTokenContractUri,
         rankTokenURI: taskArgs.rankTokenUri,
-        principalCost: taskArgs.principalCost,
+        principalCost: ethers.utils.parseEther(taskArgs.principalCost),
         principalTimeConstant: taskArgs.principalTimeConstant,
       },
     };

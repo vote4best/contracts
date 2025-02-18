@@ -2,10 +2,10 @@ import { DAODistributor, RankifyDiamondInstance, RankToken } from '../../types';
 import { task } from 'hardhat/config';
 import inquirer from 'inquirer';
 import { InstanceBase, GameState } from './InstanceBase';
-import { setupTest } from '../utils';
-import { SignerIdentity } from '../utils';
 import { MAOInstances, parseInstantiated } from '../../scripts/parseInstantiated';
 import { BigNumber } from 'ethers';
+import { setupMockedEnvironment, SignerIdentity } from '../../scripts/setupMockEnvironment';
+import { log } from '../../scripts/utils';
 
 type GameAction = 'openRegistration' | 'fillParty' | 'startGame' | 'nextMove' | 'lastMove' | 'overtime' | 'endGame';
 
@@ -124,14 +124,13 @@ async function executeSingleAction(
       console.log('Registration opened successfully');
       break;
     case 'fillParty':
-      await instanceBase.fillParty(
+      await instanceBase.fillParty({
         players,
-        instanceBase.rankifyInstance,
         gameId,
-        true,
-        false,
-        instanceBase.adr.gameMaster1,
-      );
+        shiftTime: true,
+        gameMaster: instanceBase.adr.gameMaster1,
+        startGame: false,
+      });
       console.log('Party filled successfully');
       break;
     case 'startGame':
@@ -139,7 +138,11 @@ async function executeSingleAction(
       console.log('Game started successfully');
       break;
     case 'nextMove':
-      await instanceBase.makeTurn(gameId);
+      await instanceBase.makeTurn({
+        gameId,
+        distribution: 'equal',
+        increaseFinalTime: false,
+      });
       console.log('Next move completed');
       break;
     case 'lastMove':
@@ -159,13 +162,7 @@ async function executeSingleAction(
 
 async function handleGameState(instanceBase: InstanceBase, gameId: number) {
   let continueGame = true;
-  const players = [
-    instanceBase.adr.player1,
-    instanceBase.adr.player2,
-    instanceBase.adr.player3,
-    instanceBase.adr.player4,
-    instanceBase.adr.player5,
-  ] as [SignerIdentity, SignerIdentity, ...SignerIdentity[]];
+  const players = instanceBase.getPlayers(instanceBase.adr, 5);
 
   while (continueGame) {
     const currentState = await instanceBase.getGameState(gameId);
@@ -195,7 +192,7 @@ async function handleGameState(instanceBase: InstanceBase, gameId: number) {
 }
 
 task('gameLifecycle', 'Interactive guide through the game lifecycle').setAction(async (_, hre) => {
-  const setupEnv = await setupTest(hre);
+  const setupEnv = await setupMockedEnvironment(hre);
   hre.tracer.enabled = true;
   const { ethers } = hre;
   // Initial setup
@@ -232,7 +229,7 @@ task('gameLifecycle', 'Interactive guide through the game lifecycle').setAction(
       type: 'list',
       name: 'action',
       message: 'What would you like to do?',
-      choices: ['Create new subject', 'Select existing subject', 'Exit'],
+      choices: ['Create new subject', 'Select existing subject', 'Change logs verbosity', 'Exit'],
     });
 
     let instanceBase;
@@ -265,22 +262,44 @@ task('gameLifecycle', 'Interactive guide through the game lifecycle').setAction(
         selectedSubject = subjects.find(subject => subject.newInstanceId === subjectId);
         break;
       }
+      case 'Change logs verbosity': {
+        const { verbosity } = await inquirer.prompt({
+          type: 'list',
+          name: 'verbosity',
+          message: 'Select a verbosity level:',
+          choices: ['none', 'low', 'medium', 'high'],
+        });
+        if (verbosity === 'none') {
+          process.env['VERBOSE'] = '';
+        } else {
+          process.env['VERBOSE'] = 'true';
+        }
+        const mapping = {
+          none: '0',
+          low: '1',
+          medium: '2',
+          high: '3',
+        };
+        process.env['VERBOSE_LEVEL'] = mapping[verbosity as keyof typeof mapping];
+        log(`Logs verbosity set to ${verbosity}`);
+        break;
+      }
       case 'Exit':
         exitProgram = true;
         continue;
     }
 
     if (selectedSubject) {
-      instanceBase = new InstanceBase(
-        setupEnv.env,
-        setupEnv.adr,
-        (await ethers.getContractAt(
+      instanceBase = new InstanceBase({
+        env: setupEnv.env,
+        adr: setupEnv.adr,
+        rankifyInstance: (await ethers.getContractAt(
           'RankifyDiamondInstance',
           selectedSubject.instancesParsed.ACIDInstance,
         )) as RankifyDiamondInstance,
-        (await ethers.getContractAt('RankToken', selectedSubject.instancesParsed.rankToken)) as RankToken,
+        rankToken: (await ethers.getContractAt('RankToken', selectedSubject.instancesParsed.rankToken)) as RankToken,
         hre,
-      );
+      });
 
       let continueWithSubject = true;
       while (continueWithSubject) {
@@ -294,8 +313,9 @@ task('gameLifecycle', 'Interactive guide through the game lifecycle').setAction(
         switch (subjectAction) {
           case 'Create new game': {
             const gameId = await instanceBase.createGame(
-              instanceBase.adr.gameCreator1,
-              instanceBase.adr.gameMaster1.wallet.address,
+              instanceBase.RInstanceSettings().RInstance_MIN_GAME_TIME,
+              instanceBase.adr.gameCreator1.wallet,
+              instanceBase.adr.gameMaster1.address,
               1,
               false,
             );
